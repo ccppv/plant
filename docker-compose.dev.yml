@@ -1,0 +1,54 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────
+# docker-compose.dev.yml  — локальная разработка
+# Использование: docker compose -f docker-compose.dev.yml up
+# ──────────────────────────────────────────────
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: plant_postgres_dev
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-plant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plant}
+      POSTGRES_DB: ${POSTGRES_DB:-plant_db}
+
+  redis:
+    image: redis:7-alpine
+    container_name: plant_redis_dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+
+  backend:
+    container_name: plant_backend_dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: deps
+    restart: unless-stopped
+    env_file:
+      - .env.dev
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app  # Hot reload
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
