@@ -17,14 +17,13 @@ async def health_check() -> HealthCheck:
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1"))
     except Exception as e:
-        db_status = f"error: {e}"
+        db_status = "error" if settings.ENVIRONMENT == "production" else f"error: {e}"
 
-    # Проверка Redis
     redis_status = "ok"
     try:
         await redis_client.ping()
     except Exception as e:
-        redis_status = f"error: {e}"
+        redis_status = "error" if settings.ENVIRONMENT == "production" else f"error: {e}"
 
     return HealthCheck(
         status="ok" if db_status == "ok" and redis_status == "ok" else "degraded",

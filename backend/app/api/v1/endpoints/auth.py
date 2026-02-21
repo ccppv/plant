@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import DBSession, CurrentUser
+from app.core.limiter import limiter
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -14,14 +15,15 @@ from app.core.security import (
     decode_token,
 )
 from app.models.user import User
-from app.schemas.token import Token
+from app.schemas.token import RefreshTokenRequest, Token
 from app.schemas.user import UserCreate, UserRead
 
 router = APIRouter()
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def register(user_in: UserCreate, db: DBSession) -> User:
+@limiter.limit("5/minute")
+async def register(request: Request, user_in: UserCreate, db: DBSession) -> User:
     result = await db.execute(select(User).where(User.email == user_in.email))
     if result.scalar_one_or_none():
         raise HTTPException(
@@ -40,7 +42,9 @@ async def register(user_in: UserCreate, db: DBSession) -> User:
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: DBSession,
 ) -> Token:
@@ -61,14 +65,18 @@ async def login(
 
 
 @router.post("/refresh", response_model=Token)
-async def refresh_token(refresh_token: str, db: DBSession) -> Token:
+@limiter.limit("20/minute")
+async def refresh_token(request: Request, body: RefreshTokenRequest, db: DBSession) -> Token:
     from jose import JWTError
 
     try:
-        payload = decode_token(refresh_token)
+        payload = decode_token(body.refresh_token)
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
-        user_id = int(payload["sub"])
+        try:
+            user_id = int(payload["sub"])
+        except (ValueError, TypeError, KeyError):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 

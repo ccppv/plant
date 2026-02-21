@@ -30,8 +30,19 @@ async def update_my_profile(
 
 # Admin-only endpoints
 @router.get("", response_model=list[UserRead], dependencies=[])
-async def list_users(current_admin: CurrentAdmin, db: DBSession) -> list[User]:
-    result = await db.execute(select(User).order_by(User.id))
+async def list_users(
+    current_admin: CurrentAdmin,
+    db: DBSession,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[User]:
+    if limit > 100:
+        limit = 100
+    if offset < 0:
+        offset = 0
+    result = await db.execute(
+        select(User).order_by(User.id).limit(limit).offset(offset)
+    )
     return list(result.scalars().all())
 
 
